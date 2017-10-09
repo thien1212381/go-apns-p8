@@ -48,32 +48,8 @@ func NewClient(providerToken *ProviderToken, is_production bool) (*Client, error
 	return &Client{ host, client, providerToken }, nil
 }
 
-func (this *Client) Push(notification *Notification, jwt ...string) (*Response, *Error){
-	var jwtstr string
-	if len(jwt) == 0 {
-		jwtstr,_ = this.CProviderToken.GetJWT()
-	} else {
-		jwtstr = jwt[0]
-	}
-	return this.push(notification, jwtstr)
-}
-
-func (this *Client) PushMulti(notifications []*Notification) ([]*Response, []*Error) {
-	jwt,_ := this.CProviderToken.GetJWT()
-
-	responses := []*Response{}
-	errs := []*Error{}
-
-	for _, notification := range notifications {
-		res ,err := this.push(notification, jwt)
-		responses = append(responses, res)
-		errs = append(errs, err)
-	}
-
-	return responses, errs
-}
-
-func (this *Client) push(notification *Notification, jwt string) (*Response, *Error) {
+func (this *Client) Push(notification *Notification) (*Response, *Error){
+	jwt := this.CProviderToken.GetJWT()
 	req, err := notification.newRequest(this.host, jwt)
 	if err!=nil {
 		log.Fatal(err)

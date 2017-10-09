@@ -13,13 +13,20 @@ import (
 	"encoding/asn1"
 	"crypto/rand"
 	"math/big"
+	"sync"
 )
 
+const (
+	TokenTimeOut = 3000
+)
 
 type ProviderToken struct {
+	sync.Mutex
 	keyID 		string
 	teamID 		string
 	privateKey 	*ecdsa.PrivateKey
+	jwt 		string
+	issuedAt    int64
 }
 
 func NewProvierToken(path string, keyID string, teamID string) (*ProviderToken, error){
@@ -32,14 +39,27 @@ func NewProvierToken(path string, keyID string, teamID string) (*ProviderToken, 
 	if err != nil {
 		return nil, err
 	}
-	return &ProviderToken{ keyID: keyID, teamID: teamID, privateKey: key.(*ecdsa.PrivateKey) },nil
+	token :=  &ProviderToken{ keyID: keyID, teamID: teamID, privateKey: key.(*ecdsa.PrivateKey), }
+	if err := token.GenJWT(); err != nil {
+		return nil, err
+	}
+	return token, nil
 }
 
-func (this *ProviderToken) GetJWT() (string,error) {
+func (this *ProviderToken) GetJWT() string {
+	this.Lock()
+	defer this.Unlock()
+	if this.IsExpired() {
+		this.GenJWT()
+	}
+	return this.jwt
+}
+
+func (this *ProviderToken) GenJWT() (error) {
 	var jwtJson bytes.Buffer
 	header,err := this.getHeader()
 	if err!=nil {
-		return "", err
+		return err
 	}
 	jwtJson.Write(header)
 
@@ -47,18 +67,25 @@ func (this *ProviderToken) GetJWT() (string,error) {
 
 	claim, err := this.getClaim()
 	if err!=nil {
-		return "", err
+		return err
 	}
 	jwtJson.Write(claim)
 
 	sign, err := this.signSHA(jwtJson.Bytes())
 	if err!=nil {
-		return "", err
+		return err
 	}
 
 	jwtJson.WriteString(".")
 	jwtJson.Write(sign)
-	return jwtJson.String(), nil
+
+	this.issuedAt = time.Now().Unix()
+	this.jwt = jwtJson.String()
+	return nil
+}
+
+func (this *ProviderToken) IsExpired() bool {
+	return time.Now().Unix() >= (this.issuedAt + TokenTimeOut)
 }
 
 func (this *ProviderToken) getHeader() ([]byte, error){
